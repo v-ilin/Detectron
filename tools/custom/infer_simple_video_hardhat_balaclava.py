@@ -24,7 +24,6 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 from collections import defaultdict
-from sympy import *
 import argparse
 import cv2  # NOQA (Must import before importing caffe2 due to bug in cv2)
 import glob
@@ -32,14 +31,13 @@ import logging
 import os
 import sys
 import time
-import json
 
 from caffe2.python import workspace
-from pdb import set_trace
 
 from core.config import assert_and_infer_cfg
 from core.config import cfg
 from core.config import merge_cfg_from_file
+from utils.io import cache_url
 from utils.timer import Timer
 import core.test_engine as infer_engine
 import datasets.dummy_datasets as dummy_datasets
@@ -47,10 +45,9 @@ import utils.c2 as c2_utils
 import utils.logging
 import utils.vis as vis_utils
 
-person_class_index = 1
-hardhat_class_index = 2
-
-CHANCE_THRESHOLD = 0.7
+import numpy as np
+from sympy import *
+from pprint import pprint
 
 c2_utils.import_detectron_ops()
 # OpenCL may be enabled by default in OpenCV3; disable it because it's not
@@ -85,17 +82,35 @@ def parse_args():
         default='jpg',
         type=str)
     parser.add_argument(
-        '--csv-path',
-        dest='csv_path',
-        help='path to csv file',
-        default='/tmp/data.csv',
-        type=str)
-    parser.add_argument(
         'im_or_folder', help='image or folder of images', default=None)
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
     return parser.parse_args()
+
+
+person_class_index = 1
+hardhat_class_index = 2
+not_hardhat_class_index = 3
+
+CHANCE_THRESHOLD = 0.7
+BALACLAVA_THRESHOLD = 50
+
+hardhat_model_path = "/home/user/vilin/detectron-output/hardhats_persons_4/train/hardhats_persons_4_train" \
+                     "/generalized_rcnn/model_final.pkl"
+
+
+class color:
+    PURPLE = '\033[95m'
+    CYAN = '\033[96m'
+    DARKCYAN = '\033[36m'
+    BLUE = '\033[94m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+    END = '\033[0m'
 
 
 def create_polygon(cords):
@@ -131,12 +146,35 @@ def get_class_probability(bbox_coord):
     return bbox_coord[4]
 
 
+def dist(x1, y1, x2, y2):
+    return sqrt((y1 - y2)**2 + (x2 - x1)**2)
+
+
+def is_balaclava(hh, image):
+    hh = [int(h) for h in hh]
+    x1, y1, x2, y2 = hh[0], hh[1], hh[2], hh[3]
+    cx, cy = np.average([x1, x2]), np.average([y1, y2])
+    d_max = dist(x1, y1, cx, cy)
+    colors = []
+    for i in range(y1, y2):
+        for j in range(x1, x2):
+            d = dist(j, i, cx, cy)
+            m = (d_max - d) / d_max
+            colors.extend([int(color * m) for color in image[i, j]])
+
+    # cv2.imwrite("/tmp/balaclava.jpg", image[y1:y2, x1:x2])
+    average_color = np.average(colors)
+    print("Average is :" + str(average_color) + " when threshold is: " +
+          str(BALACLAVA_THRESHOLD))
+    return average_color < BALACLAVA_THRESHOLD
+
+
 def main(args):
     logger = logging.getLogger(__name__)
     merge_cfg_from_file(args.cfg)
-    cfg.TEST.WEIGHTS = args.weights
     cfg.NUM_GPUS = 1
-    assert_and_infer_cfg()
+    args.weights = cache_url(args.weights, cfg.DOWNLOAD_CACHE)
+    assert_and_infer_cfg(cache_urls=False)
     model = infer_engine.initialize_model_from_cfg(args.weights)
     dummy_coco_dataset = dummy_datasets.get_coco_dataset()
 
@@ -147,31 +185,41 @@ def main(args):
 
     im_list = list(im_list)
     im_list.sort()
-    json_output = []
 
-    csv = open(args.csv_path, 'w+')
+    # Define the codec and create VideoWriter object
+    xvid_codec = 1145656920
+    frame_width = 1600
+    frame_heigth = 1200
+    video = cv2.VideoWriter('/tmp/output.avi', xvid_codec,
+                            1.0, (frame_width, frame_heigth))
 
-    for i, im_name in enumerate(im_list):
-        out_name = os.path.join(
-            args.output_dir, '{}'.format(os.path.basename(im_name) + '.pdf'))
+    for _, im_name in enumerate(im_list):
+        # out_name = os.path.join(
+        #     args.output_dir, '{}'.format(os.path.basename(im_name) + '.pdf'))
 
         im = cv2.imread(im_name)
 
-        logger.info('Processing {} -> {}'.format(im_name, out_name))
+        logger.info('Processing {}'.format(
+            color.RED + color.BOLD + im_name + color.END + color.END))
+
+        people_model = infer_engine.initialize_model_from_cfg(args.weights)
 
         with c2_utils.NamedCudaScope(0):
-            cls_boxes, _, _ = infer_engine.im_detect_all(model, im, None)
+            cls_boxes, _, _ = infer_engine.im_detect_all(
+                people_model, im, None)
 
-        boxes, _, _, classes = vis_utils.convert_from_cls_format(
-            cls_boxes, None, None)
+        hardhat_model = infer_engine.initialize_model_from_cfg(
+            hardhat_model_path)
 
-        if boxes is None:
-            boxes = []
-        else:
-            boxes = boxes.tolist()
+        with c2_utils.NamedCudaScope(0):
+            hardhat_cls_boxes, _, _ = infer_engine.im_detect_all(
+                hardhat_model, im, None)
+
+        cls_boxes[hardhat_class_index] = hardhat_cls_boxes[hardhat_class_index]
 
         persons = []
         hardhats = []
+        not_hardhats = []
 
         for person in cls_boxes[person_class_index]:
             if person[4] > CHANCE_THRESHOLD:
@@ -179,34 +227,34 @@ def main(args):
 
         for hardhat in cls_boxes[hardhat_class_index]:
             if hardhat[4] > CHANCE_THRESHOLD:
-                hardhats.append(hardhat)
+                if not is_balaclava(hardhat, im):
+                    hardhats.append(hardhat)
+                else:
+                    not_hardhats.append(hardhat)
 
-        intruder = find_intruders(persons, hardhats)
+        cls_boxes[person_class_index] = persons
+        cls_boxes[hardhat_class_index] = hardhats
+        cls_boxes.append(not_hardhats)
 
-        if len(intruder) != 0:
-            file_name = os.path.split(im_name)[1]
-            file_without_ext = os.path.splitext(file_name)[0]
-            csv.write("TEXT," + str(file_without_ext) + "," +
-                      str(file_without_ext) + ".pdf" + '\n')
+        img_bbox = vis_utils.vis_one_image_opencv(
+            im,
+            cls_boxes,
+            None,
+            None,
+            # thresh=0.0,
+            show_box=True,
+            dataset=dummy_coco_dataset,
+            show_class=True)
 
-            vis_utils.vis_one_image(
-                im[:, :, ::-1],  # BGR -> RGB for visualization
-                file_without_ext,
-                args.output_dir,
-                cls_boxes,
-                None,
-                None,
-                dataset=dummy_coco_dataset,
-                box_alpha=0.3,
-                show_class=True,
-                thresh=0.7,
-                kp_thresh=2)
-    csv.close()
+        frame = cv2.resize(img_bbox, (frame_width, frame_heigth),
+                           interpolation=cv2.INTER_CUBIC)
+        video.write(frame)
+
+    video.release()
 
 
 if __name__ == '__main__':
     workspace.GlobalInit(['caffe2', '--caffe2_log_level=0'])
     utils.logging.setup_logging(__name__)
     args = parse_args()
-    print(args)
     main(args)

@@ -1,7 +1,7 @@
 # Use Caffe2 image as parent image
 FROM caffe2/caffe2:snapshot-py2-cuda9.0-cudnn7-ubuntu16.04
 
-RUN apt-get update && apt-get install -y python-tk
+RUN apt-get update && apt-get install -y python-tk google-perftools
 
 RUN mv /usr/local/caffe2 /usr/local/caffe2_build
 ENV Caffe2_DIR /usr/local/caffe2_build
@@ -21,11 +21,14 @@ RUN make install
 RUN git clone https://github.com/facebookresearch/detectron /detectron
 
 # Set up Python modules
-WORKDIR /detectron/lib
+WORKDIR /detectron
 RUN make
 
 # Build custom ops
 RUN make ops
+
+RUN apt-get install -y google-perftools
+RUN export LD_PRELOAD="/usr/lib/libtcmalloc.so.4"
 
 # Go to Detectron root
 WORKDIR /detectron

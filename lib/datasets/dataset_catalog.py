@@ -245,17 +245,19 @@ DATASETS = {
         '/hardhats_persons_4/annotations/instances_val2014.json'
     },
     'hardhats_persons_5_train': {
-        IM_DIR:
-        _DATA_DIR + '/hardhats_persons_5/train/train',
-        ANN_FN:
-        _DATA_DIR +
-        '/hardhats_persons_5/annotations/instances_train2014.json'
+        IM_DIR: _DATA_DIR + '/hardhats_persons_5/train/train',
+        ANN_FN: _DATA_DIR + '/hardhats_persons_5/annotations/instances_train2014.json'
     },
     'hardhats_persons_5_val': {
-        IM_DIR:
-        _DATA_DIR + '/hardhats_persons_5/val',
-        ANN_FN:
-        _DATA_DIR +
-        '/hardhats_persons_5/annotations/instances_val2014.json'
+        IM_DIR: _DATA_DIR + '/hardhats_persons_5/val',
+        ANN_FN: _DATA_DIR + '/hardhats_persons_5/annotations/instances_val2014.json'
+    },
+    'hardhat_gloves_goggles_train': {
+        IM_DIR: _DATA_DIR + '/hardhat_gloves_goggles/train',
+        ANN_FN: _DATA_DIR + '/hardhat_gloves_goggles/annotations/instances_train.json'
+    },
+    'hardhat_gloves_goggles_val': {
+        IM_DIR: _DATA_DIR + '/hardhat_gloves_goggles/val',
+        ANN_FN: _DATA_DIR + '/hardhat_gloves_goggles/annotations/instances_val.json'
     }
 }

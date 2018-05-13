@@ -154,8 +154,6 @@ def main(args):
     im_list = list(im_list)
     im_list.sort()
 
-    csv = open(args.csv_path, 'w+')
-
     for i, im_name in enumerate(im_list):
         # out_name = os.path.join(
         #     args.output_dir, '{}'.format(os.path.basename(im_name) + '.pdf'))
@@ -217,8 +215,6 @@ def main(args):
             show_class=True,
             thresh=0.7,
             kp_thresh=2)
-
-    csv.close()
 
 
 if __name__ == '__main__':

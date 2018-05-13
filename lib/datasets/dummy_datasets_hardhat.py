@@ -28,13 +28,6 @@ from utils.collections import AttrDict
 def get_coco_dataset():
     """A dummy COCO dataset that includes only the 'classes' field."""
     ds = AttrDict()
-    classes = [
-        '__background__',
-        'person in hardhat',
-        'person in hood',
-        'person in gloves',
-        'person without hardhat',
-        'person in goggles',
-        'person without goggles']
+    classes = ['__background__', 'person', 'hardhat', 'NOT hardhat']
     ds.classes = {i: name for i, name in enumerate(classes)}
     return ds
