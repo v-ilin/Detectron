@@ -20,11 +20,13 @@ RUN make install
 # Clone the Detectron repository
 RUN git clone https://github.com/facebookresearch/detectron /detectron
 
-# Set up Python modules
+# Go to Detectron root
 WORKDIR /detectron
+
+# Set up Python modules
 RUN make
 
-# Build custom ops
+# [Optional] Build custom ops
 RUN make ops
 
 RUN apt-get install -y google-perftools
