@@ -22,7 +22,7 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-from detectron.utils.collections import AttrDict
+from utils.collections import AttrDict
 
 
 def get_coco_dataset():
@@ -35,7 +35,6 @@ def get_coco_dataset():
         'person in gloves',
         'person without hardhat',
         'person in goggles',
-        'person without goggles',
-        'person without gloves']
+        'person without goggles']
     ds.classes = {i: name for i, name in enumerate(classes)}
     return ds

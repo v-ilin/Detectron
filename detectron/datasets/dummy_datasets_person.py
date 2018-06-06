@@ -30,12 +30,6 @@ def get_coco_dataset():
     ds = AttrDict()
     classes = [
         '__background__',
-        'person in hardhat',
-        'person in hood',
-        'person in gloves',
-        'person without hardhat',
-        'person in goggles',
-        'person without goggles',
-        'person without gloves']
+        'person']
     ds.classes = {i: name for i, name in enumerate(classes)}
     return ds

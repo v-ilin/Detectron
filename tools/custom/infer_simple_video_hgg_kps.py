@@ -33,6 +33,7 @@ import detectron.utils.vis as vis_utils
 
 from pprint import pprint
 from enum import IntEnum
+from sympy import *
 
 c2_utils.import_detectron_ops()
 # OpenCL may be enabled by default in OpenCV3; disable it because it's not
@@ -93,6 +94,15 @@ class color:
     END = '\033[0m'
 
 
+CHANCE_THRESHOLD = 0.7
+left_ankle_class_index = 15
+right_ankle_class_index = 16
+
+danger_zone_1600_1200 = [136, 453, 587, 894]
+danger_zone_1280_960 = [78, 388, 377, 748]
+# x1, y1, x2, y2
+danger_zone = danger_zone_1280_960
+
 Treshold = 0.6
 
 person_history = []
@@ -116,11 +126,12 @@ class person_hardhat_status(IntEnum):
 
 
 class person:
-    def __init__(self, bbox, status, gloves_on, goggles_on):
+    def __init__(self, bbox, status, gloves_on, goggles_on, in_danger_zone):
         self.bbox = bbox
         self.status = status
         self.gloves_on = gloves_on
         self.goggles_on = goggles_on
+        self.in_danger_zone = in_danger_zone
 
 
 class hardhat_polygon:
@@ -139,17 +150,67 @@ class gloves_goggles_polygon:
         self.status = status
 
 
+def create_polygon(cords):
+    left_top = (cords[0], cords[1])
+    left_bottom = (cords[0], cords[3])
+    right_top = (cords[2], cords[1])
+    right_bottom = (cords[2], cords[3])
+    return Polygon(left_bottom, left_top, right_top, right_bottom)
+
+
+def is_ankle_in_danger_zone(ankle, zone):
+    return zone.encloses_point(ankle)
+
+
+def check_ankles_in_danger_zone(ankles, zone):
+    ankles_p = [Point2D(a[0], a[1]) for a in ankles]
+    danger_zone_p = create_polygon(zone)
+    for a in ankles_p:
+        if is_ankle_in_danger_zone(a, danger_zone_p):
+            return True
+    return False
+
+
+def collect_ankles(cls_keyps):
+    ankles = []
+
+    for person in cls_keyps:
+        x_keyps = person[0]
+        y_keyps = person[1]
+
+        left_ankle = [x_keyps[left_ankle_class_index],
+                      y_keyps[left_ankle_class_index]]
+        right_ankle = [x_keyps[right_ankle_class_index],
+                       y_keyps[right_ankle_class_index]]
+
+        ankles.append(left_ankle)
+        ankles.append(right_ankle)
+
+    return ankles
+
+
+def draw_danger_zone(frame, danger_zone):
+    x1 = danger_zone[0]
+    y1 = danger_zone[1]
+    x2 = danger_zone[2]
+    y2 = danger_zone[3]
+
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 4)
+
+
 def get_polygon_index_with_max_precision(bboxes):
     precitions = []
 
     for _, polygon in enumerate(bboxes):
         precitions.append(polygon.bbox[4])
 
-    return int(max(precitions))
+    pprint(color.BLUE + color.BOLD + "precitions = " +
+           str(precitions) + color.END + color.END)
+    return precitions.index((max(precitions)))
 
 
-def convert_to_person(cls_boxes):
-    current_person = person(None, None, None, None)
+def convert_to_person(cls_boxes, is_in_danger_zone):
+    current_person = person(None, None, None, None, is_in_danger_zone)
 
     hardhats_polygons = []
 
@@ -244,6 +305,7 @@ def detect_violations(current_person):
     gloves_violation_message = "Work without gloves"
     goggles_violation_message = "Work without goggles"
     without_hardhat_message = "Work without hardhat"
+    danger_zone_message = "Work in danger zone"
 
     if current_person.gloves_on == False:
 
@@ -302,7 +364,7 @@ def detect_violations(current_person):
                 break
             if person.status == person_hardhat_status.In_Hood:
                 for j in reversed(range(0, i - 1)):
-                    # pprint(reversed_person_history[j][0])
+
                     if reversed_person_history[j].status is person_hardhat_status.Undefined:
                         if j == 0:
                             violations.append(without_hardhat_message)
@@ -324,16 +386,33 @@ def detect_violations(current_person):
             if person.status == person_hardhat_status.Without_Hardhat:
                 break
 
+    if current_person.in_danger_zone:
+        if len(person_history) == 0:
+            violations.append(danger_zone_message)
+
+        for i, person in reversed(list(enumerate(person_history))):
+            if person.in_danger_zone:
+                break
+
+            if not person.in_danger_zone:
+                violations.append(danger_zone_message)
+                break
+
     return violations
 
 
+keypoints_model_path = '/home/user/vilin/detectron-input/pretrained_models/model_final.pkl'
+keypoints_config_file_path = '/home/user/vilin/detectron-input/pretrained_models/e2e_mask_rcnn_R-50-FPN_1x.yaml'
+
+
 def main(args):
+    logging.disable(logging.WARNING)
     logger = logging.getLogger(__name__)
+
     merge_cfg_from_file(args.cfg)
     cfg.NUM_GPUS = 1
     args.weights = cache_url(args.weights, cfg.DOWNLOAD_CACHE)
-    assert_and_infer_cfg(cache_urls=False)
-    model = infer_engine.initialize_model_from_cfg(args.weights)
+    assert_and_infer_cfg(cache_urls=False, make_immutable=False)
     dummy_coco_dataset = dummy_datasets.get_coco_dataset()
 
     if os.path.isdir(args.im_or_folder):
@@ -346,8 +425,8 @@ def main(args):
 
     # Define the codec and create VideoWriter object
     xvid_codec = 1145656920
-    frame_width = 1280
-    frame_heigth = 960
+    frame_width = 1600
+    frame_heigth = 1200
     video = cv2.VideoWriter(args.output_video, xvid_codec,
                             1.0, (frame_width, frame_heigth))
 
@@ -359,22 +438,73 @@ def main(args):
 
         im = cv2.imread(im_name)
 
-        logger.info('Processing {}'.format(
+        logger.error('Processing {}'.format(
             color.RED + color.BOLD + im_name + color.END + color.END))
+
+        merge_cfg_from_file(args.cfg)
+        args.weights = cache_url(args.weights, cfg.DOWNLOAD_CACHE)
+        hardhat_model = infer_engine.initialize_model_from_cfg(
+            args.weights)
 
         with c2_utils.NamedCudaScope(0):
             cls_boxes, _, _ = infer_engine.im_detect_all(
-                model, im, None)
+                hardhat_model, im, None)
 
-            current_person = convert_to_person(filter_cls_boxes(cls_boxes))
-            violations = detect_violations(current_person)
-            person_history.append(current_person)
+        merge_cfg_from_file(keypoints_config_file_path)
+        w = cache_url(keypoints_model_path, cfg.DOWNLOAD_CACHE)
+        keypoints_model = infer_engine.initialize_model_from_cfg(
+            w)
+        assert_and_infer_cfg(cache_urls=False, make_immutable=False)
+
+        with c2_utils.NamedCudaScope(0):
+            _, _, cls_keyps = infer_engine.im_detect_all(
+                keypoints_model, im, None)
+
+        persons = []
+        person_kps = []
+
+        for p in range(len(cls_boxes[int(person_class_index.in_hardhat)])):
+            person = cls_boxes[int(person_class_index.in_hardhat)][p]
+            person_key = cls_keyps[int(person_class_index.in_hardhat)][p]
+
+            if person[4] > Treshold:
+                persons.append(person)
+                person_kps.append(person_key)
+
+        cls_keyps[int(person_class_index.in_hardhat)] = person_kps
+
+        ankles = collect_ankles(cls_keyps[int(person_class_index.in_hardhat)])
+        is_in_danger_zone = check_ankles_in_danger_zone(ankles, danger_zone)
+
+        current_person = convert_to_person(
+            filter_cls_boxes(cls_boxes), is_in_danger_zone)
+        violations = detect_violations(current_person)
+        person_history.append(current_person)
+
+        # print(color.BLUE + color.BOLD + "current_person.status = " +
+        #       str(current_person.status) + color.END + color.END)
+
+        # pprint("hardhat = {}".format(current_person.status))
+        # pprint("goggles on = {}".format(current_person.goggles_on))
+        # pprint("gloves on = {}".format(current_person.gloves_on))
+
+        # print(color.BLUE + color.BOLD + str(cls_keyps) + color.END + color.END)
+        # print(color.BLUE + color.BOLD +
+        #       str(len(cls_keyps)) + color.END + color.END)
+
+        # cls_keyps.append(cls_keyps[1])
+        # cls_keyps.append(cls_keyps[1])
+        # cls_keyps.append(cls_keyps[1])
+        # cls_keyps.append(cls_keyps[1])
+
+        # print(color.BLUE + color.BOLD +
+        #       str(len(cls_keyps)) + color.END + color.END)
 
         img_bbox = vis_utils.vis_one_image_opencv(
             im,
             cls_boxes,
             None,
-            None,
+            cls_keyps,
             thresh=Treshold,
             show_box=True,
             dataset=dummy_coco_dataset,

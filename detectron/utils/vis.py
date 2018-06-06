@@ -124,7 +124,8 @@ def vis_class(img, pos, class_str, font_scale=0.35):
     cv2.rectangle(img, back_tl, back_br, _GREEN, -1)
     # Show text.
     txt_tl = x0, y0 - int(0.3 * txt_h)
-    cv2.putText(img, txt, txt_tl, font, font_scale, _GRAY, lineType=cv2.LINE_AA)
+    cv2.putText(img, txt, txt_tl, font, font_scale,
+                _GRAY, lineType=cv2.LINE_AA)
     return img
 
 
@@ -166,6 +167,7 @@ def vis_keypoints(img, kps, kp_thresh=2, alpha=0.7):
         kps[2, dataset_keypoints.index('right_hip')],
         kps[2, dataset_keypoints.index('left_hip')])
     nose_idx = dataset_keypoints.index('nose')
+
     if sc_mid_shoulder > kp_thresh and kps[2, nose_idx] > kp_thresh:
         cv2.line(
             kp_mask, tuple(mid_shoulder), tuple(kps[:2, nose_idx]),
@@ -181,6 +183,7 @@ def vis_keypoints(img, kps, kp_thresh=2, alpha=0.7):
         i2 = kp_lines[l][1]
         p1 = kps[0, i1], kps[1, i1]
         p2 = kps[0, i2], kps[1, i2]
+
         if kps[2, i1] > kp_thresh and kps[2, i2] > kp_thresh:
             cv2.line(
                 kp_mask, p1, p2,

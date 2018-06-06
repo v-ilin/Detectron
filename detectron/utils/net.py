@@ -100,12 +100,12 @@ def initialize_gpu_from_weights_file(model, weights_file, gpu_id=0):
                 # If the blob is already in the workspace, make sure that it
                 # matches the shape of the loaded blob
                 ws_blob = workspace.FetchBlob(dst_name)
-                assert ws_blob.shape == src_blobs[src_name].shape, \
-                    ('Workspace blob {} with shape {} does not match '
-                     'weights file shape {}').format(
-                        src_name,
-                        ws_blob.shape,
-                        src_blobs[src_name].shape)
+                # assert ws_blob.shape == src_blobs[src_name].shape, \
+                #     ('Workspace blob {} with shape {} does not match '
+                #      'weights file shape {}').format(
+                #         src_name,
+                #         ws_blob.shape,
+                #         src_blobs[src_name].shape)
             workspace.FeedBlob(
                 dst_name,
                 src_blobs[src_name].astype(np.float32, copy=False))
