@@ -201,6 +201,14 @@ _DATASETS = {
             _DATA_DIR + '/VOC2012/annotations/voc_2012_val.json',
         _DEVKIT_DIR:
             _DATA_DIR + '/VOC2012/VOCdevkit2012'
+    },
+    'hggb_train': {
+        _IM_DIR: _DATA_DIR + '/hggb/train',
+        _ANN_FN: _DATA_DIR + '/hggb/annotations/instances_train.json'
+    },
+    'hggb_val': {
+        _IM_DIR: _DATA_DIR + '/hggb/val',
+        _ANN_FN: _DATA_DIR + '/hggb/annotations/instances_val.json'
     }
 }
 

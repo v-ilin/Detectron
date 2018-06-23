@@ -519,7 +519,7 @@ def main(args):
         # print(color.BLUE + color.BOLD +
         #       str(len(cls_keyps)) + color.END + color.END)
 
-        img_bbox = vis_utils.vis_one_image_opencv(
+        img_with_bboxes = vis_utils.vis_one_image_opencv(
             im,
             cls_boxes,
             segms=None,
@@ -529,7 +529,7 @@ def main(args):
             dataset=dummy_coco_dataset,
             show_class=True)
 
-        frame = cv2.resize(img_bbox, (frame_width, frame_heigth),
+        frame = cv2.resize(img_with_bboxes, (frame_width, frame_heigth),
                            interpolation=cv2.INTER_CUBIC)
         video.write(frame)
 

@@ -1,6 +1,9 @@
 #!/usr/bin/env python2
 
-"""Perform inference on a single image or all images with a certain extension
+"""
+Hardhat, Gloves, Goggles, Belt
+
+Perform inference on a single image or all images with a certain extension
 (e.g., .jpg) in a folder.
 """
 
@@ -62,6 +65,12 @@ def parse_args():
         default=None,
         type=str)
     parser.add_argument(
+        '--video-res',
+        dest='video_res',
+        help='video resolution (high or low)',
+        default='high',
+        type=str)
+    parser.add_argument(
         '--image-ext',
         dest='image_ext',
         help='image file name extension (default: jpg)',
@@ -94,14 +103,15 @@ class color:
     END = '\033[0m'
 
 
-CHANCE_THRESHOLD = 0.7
+keypoints_model_path = '/home/user/vilin/detectron-input/pretrained_models/model_final.pkl'
+keypoints_config_file_path = '/home/user/vilin/detectron-input/pretrained_models/e2e_mask_rcnn_R-50-FPN_1x.yaml'
+
 left_ankle_class_index = 15
 right_ankle_class_index = 16
 
+# x1, y1, x2, y2
 danger_zone_1600_1200 = [136, 453, 587, 894]
 danger_zone_1280_960 = [78, 388, 377, 748]
-# x1, y1, x2, y2
-danger_zone = danger_zone_1600_1200
 
 Treshold = 0.6
 
@@ -116,6 +126,8 @@ class person_class_index(IntEnum):
     in_goggles = 5
     without_goggles = 6
     in_hood = 2
+    in_belt = 9,
+    without_belt = 8
 
 
 class person_hardhat_status(IntEnum):
@@ -126,12 +138,13 @@ class person_hardhat_status(IntEnum):
 
 
 class person:
-    def __init__(self, bbox, status, gloves_on, goggles_on, in_danger_zone):
+    def __init__(self, bbox, status, gloves_on, goggles_on, in_danger_zone, belt_on):
         self.bbox = bbox
         self.status = status
         self.gloves_on = gloves_on
         self.goggles_on = goggles_on
         self.in_danger_zone = in_danger_zone
+        self.belt_on = belt_on
 
 
 class hardhat_polygon:
@@ -204,13 +217,11 @@ def get_polygon_index_with_max_precision(bboxes):
     for _, polygon in enumerate(bboxes):
         precitions.append(polygon.bbox[4])
 
-    pprint(color.BLUE + color.BOLD + "precitions = " +
-           str(precitions) + color.END + color.END)
     return precitions.index((max(precitions)))
 
 
 def convert_to_person(cls_boxes, is_in_danger_zone):
-    current_person = person(None, None, None, None, is_in_danger_zone)
+    current_person = person(None, None, None, None, is_in_danger_zone, None)
 
     hardhats_polygons = []
 
@@ -283,6 +294,27 @@ def convert_to_person(cls_boxes, is_in_danger_zone):
             goggles_polygons)
         current_person.goggles_on = goggles_polygons[max_precition_index].status
 
+    belt_polygons = []
+
+    if len(cls_boxes[int(person_class_index.in_belt)]) > 0:
+        belt_polygons.append(gloves_goggles_polygon(
+            cls_boxes[int(person_class_index.in_belt)][0], True))
+
+    if len(cls_boxes[int(person_class_index.without_belt)]) > 0:
+        belt_polygons.append(gloves_goggles_polygon(
+            cls_boxes[int(person_class_index.without_belt)][0], False))
+
+    belt_polygons_count = len(belt_polygons)
+
+    if belt_polygons_count == 0:
+        current_person.belt_on = None
+    elif belt_polygons_count == 1:
+        current_person.belt_on = belt_polygons[0].status
+    else:
+        max_precition_index = get_polygon_index_with_max_precision(
+            belt_polygons)
+        current_person.belt_on = belt_polygons[max_precition_index].status
+
     return current_person
 
 
@@ -304,6 +336,7 @@ def detect_violations(current_person):
 
     gloves_violation_message = "Work without gloves"
     goggles_violation_message = "Work without goggles"
+    belt_violation_message = "Work without belt"
     without_hardhat_message = "Work without hardhat"
     danger_zone_message = "Work in danger zone"
 
@@ -341,6 +374,25 @@ def detect_violations(current_person):
 
             if person.goggles_on == True:
                 violations.append(goggles_violation_message)
+                break
+            else:
+                break
+
+    if current_person.belt_on == False:
+
+        if len(person_history) == 0:
+            violations.append(belt_violation_message)
+
+        for i, person in reversed(list(enumerate(person_history))):
+
+            if person.belt_on is None:
+                if i == 0:
+                    violations.append(belt_violation_message)
+                    break
+                continue
+
+            if person.belt_on == True:
+                violations.append(belt_violation_message)
                 break
             else:
                 break
@@ -401,13 +453,11 @@ def detect_violations(current_person):
     return violations
 
 
-keypoints_model_path = '/home/user/vilin/detectron-input/pretrained_models/model_final.pkl'
-keypoints_config_file_path = '/home/user/vilin/detectron-input/pretrained_models/e2e_mask_rcnn_R-50-FPN_1x.yaml'
-
-
 def main(args):
     logging.disable(logging.WARNING)
     logger = logging.getLogger(__name__)
+
+    danger_zone = danger_zone_1600_1200 if args.video_res == 'high' else danger_zone_1280_960
 
     merge_cfg_from_file(args.cfg)
     cfg.NUM_GPUS = 1
@@ -469,12 +519,23 @@ def main(args):
 
             if person[4] > Treshold:
                 persons.append(person)
-                person_kps.append(person_key)
 
-        cls_keyps[int(person_class_index.in_hardhat)] = person_kps
+                if cls_keyps is not None:
+                    for k in range(len(cls_keyps[int(person_class_index.in_hardhat)])):
+                        person_key = cls_keyps[int(
+                            person_class_index.in_hardhat)][k]
+                        person_kps.append(person_key)
 
-        ankles = collect_ankles(cls_keyps[int(person_class_index.in_hardhat)])
-        is_in_danger_zone = check_ankles_in_danger_zone(ankles, danger_zone)
+        if cls_keyps is not None:
+            cls_keyps[int(person_class_index.in_hardhat)] = person_kps
+
+        if cls_keyps is not None:
+            ankles = collect_ankles(
+                cls_keyps[int(person_class_index.in_hardhat)])
+            is_in_danger_zone = check_ankles_in_danger_zone(
+                ankles, danger_zone)
+        else:
+            is_in_danger_zone = False
 
         current_person = convert_to_person(
             filter_cls_boxes(cls_boxes), is_in_danger_zone)
@@ -483,19 +544,6 @@ def main(args):
 
         # print(color.BLUE + color.BOLD + "current_person.status = " +
         #       str(current_person.status) + color.END + color.END)
-
-        # pprint("hardhat = {}".format(current_person.status))
-        # pprint("goggles on = {}".format(current_person.goggles_on))
-        # pprint("gloves on = {}".format(current_person.gloves_on))
-
-        # print(color.BLUE + color.BOLD + str(cls_keyps) + color.END + color.END)
-        # print(color.BLUE + color.BOLD +
-        #       str(len(cls_keyps)) + color.END + color.END)
-
-        # cls_keyps.append(cls_keyps[1])
-        # cls_keyps.append(cls_keyps[1])
-        # cls_keyps.append(cls_keyps[1])
-        # cls_keyps.append(cls_keyps[1])
 
         # print(color.BLUE + color.BOLD +
         #       str(len(cls_keyps)) + color.END + color.END)

@@ -33,12 +33,6 @@ If the `caffe2` Python package is not found, you likely need to adjust your `PYT
 
 ## Other Dependencies
 
-Install Python dependencies:
-
-```
-pip install numpy>=1.13 pyyaml>=3.12 matplotlib opencv-python>=3.2 setuptools Cython mock scipy
-```
-
 Install the [COCO API](https://github.com/cocodataset/cocoapi):
 
 ```
@@ -61,6 +55,12 @@ Clone the Detectron repository:
 ```
 # DETECTRON=/path/to/clone/detectron
 git clone https://github.com/facebookresearch/detectron $DETECTRON
+```
+
+Install Python dependencies:
+
+```
+pip install -r $DETECTRON/requirements.txt
 ```
 
 Set up Python modules:
@@ -222,11 +222,3 @@ make sure that your python versions are not getting mixed. For instance, this is
 
 In case you experience issues with CMake being unable to find the Caffe2 package when building custom operators,
 make sure you have run `make install` as part of your Caffe2 installation process.
-
-### Conflicting Imports
-
-Python modules with common names could result in import conflicts.
-For instance, a `datasets` module is also found in [tensorflow](https://github.com/tensorflow/tensorflow)
-and could cause an error (e.g. `ImportError: cannot import name task_evaluation`)
-as discussed [here](https://github.com/facebookresearch/Detectron/issues/20).
-If you encounter an import error, please make sure that you are not trying to import the module from another project.

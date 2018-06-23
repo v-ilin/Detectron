@@ -36,11 +36,14 @@ envu.set_up_matplotlib()
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 
+import random
+
 plt.rcParams['pdf.fonttype'] = 42  # For editing in Adobe Illustrator
 
 
 _GRAY = (218, 227, 218)
 _GREEN = (18, 127, 15)
+_RED = (0, 0, 255)
 _WHITE = (255, 255, 255)
 
 
@@ -116,12 +119,14 @@ def vis_class(img, pos, class_str, font_scale=0.35):
     x0, y0 = int(pos[0]), int(pos[1])
     # Compute text size.
     txt = class_str
-    font = cv2.FONT_HERSHEY_SIMPLEX
+    font = cv2.FONT_HERSHEY_TRIPLEX
     ((txt_w, txt_h), _) = cv2.getTextSize(txt, font, font_scale, 1)
+
+    color = get_class_color(class_str)
     # Place text background.
     back_tl = x0, y0 - int(1.3 * txt_h)
     back_br = x0 + txt_w, y0
-    cv2.rectangle(img, back_tl, back_br, _GREEN, -1)
+    cv2.rectangle(img, back_tl, back_br, color, -1)
     # Show text.
     txt_tl = x0, y0 - int(0.3 * txt_h)
     cv2.putText(img, txt, txt_tl, font, font_scale,
@@ -129,12 +134,23 @@ def vis_class(img, pos, class_str, font_scale=0.35):
     return img
 
 
-def vis_bbox(img, bbox, thick=1):
+def get_class_color(class_str):
+    if "without" in class_str:
+        return _RED
+    else:
+        return _GREEN
+
+
+def vis_bbox(img, bbox, class_str, thick=1):
     """Visualizes a bounding box."""
     (x0, y0, w, h) = bbox
     x1, y1 = int(x0 + w), int(y0 + h)
     x0, y0 = int(x0), int(y0)
-    cv2.rectangle(img, (x0, y0), (x1, y1), _GREEN, thickness=thick)
+
+    color = get_class_color(class_str)
+    cv2.rectangle(img, (x0, y0), (x1, y1),
+                  color, thickness=thick)
+
     return img
 
 
@@ -228,15 +244,17 @@ def vis_one_image_opencv(
         if score < thresh:
             continue
 
+        class_str = get_class_string(classes[i], score, dataset)
+
         # show box (off by default)
         if show_box:
             im = vis_bbox(
-                im, (bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]))
+                im, (bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]), class_str, 4)
 
         # show class (off by default)
         if show_class:
-            class_str = get_class_string(classes[i], score, dataset)
-            im = vis_class(im, (bbox[0], bbox[1] - 2), class_str)
+            im = vis_class(
+                im, (bbox[2], random.randint(-30, 30) + bbox[3] - (bbox[3] - bbox[1])/2), class_str, 0.8)
 
         # show mask
         if segms is not None and len(segms) > i:

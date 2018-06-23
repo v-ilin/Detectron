@@ -36,6 +36,8 @@ def get_coco_dataset():
         'person without hardhat',
         'person in goggles',
         'person without goggles',
-        'person without gloves']
+        'person without gloves',
+        'person without belt',
+        'person in belt']
     ds.classes = {i: name for i, name in enumerate(classes)}
     return ds

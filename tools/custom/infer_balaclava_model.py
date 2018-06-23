@@ -14,15 +14,16 @@ import sys
 
 from caffe2.python import workspace
 
-from core.config import assert_and_infer_cfg
-from core.config import cfg
-from core.config import merge_cfg_from_file
-import numpy as np
-import core.test_engine as infer_engine
-import datasets.dummy_datasets as dummy_datasets
-import utils.c2 as c2_utils
-import utils.logging
-import utils.vis as vis_utils
+from detectron.core.config import assert_and_infer_cfg
+from detectron.core.config import cfg
+from detectron.core.config import merge_cfg_from_file
+from detectron.utils.io import cache_url
+from detectron.utils.logging import setup_logging
+from detectron.utils.timer import Timer
+import detectron.core.test_engine as infer_engine
+import detectron.datasets.dummy_datasets as dummy_datasets
+import detectron.utils.c2 as c2_utils
+import detectron.utils.vis as vis_utils
 
 person_class_index = 1
 hardhat_class_index = 2
@@ -131,7 +132,8 @@ def is_balaclava(hh, image):
 
     # cv2.imwrite("/tmp/balaclava.jpg", image[y1:y2, x1:x2])
     average_color = np.average(colors)
-    print("Average is :" + str(average_color) + " when threshold is: " + str(BALACLAVA_THRESHOLD))
+    print("Average is :" + str(average_color) +
+          " when threshold is: " + str(BALACLAVA_THRESHOLD))
     return average_color < BALACLAVA_THRESHOLD
 
 
@@ -165,12 +167,15 @@ def main(args):
         people_model = infer_engine.initialize_model_from_cfg(args.weights)
 
         with c2_utils.NamedCudaScope(0):
-            cls_boxes, _, _ = infer_engine.im_detect_all(people_model, im, None)
+            cls_boxes, _, _ = infer_engine.im_detect_all(
+                people_model, im, None)
 
-        hardhat_model = infer_engine.initialize_model_from_cfg(hardhat_model_path)
+        hardhat_model = infer_engine.initialize_model_from_cfg(
+            hardhat_model_path)
 
         with c2_utils.NamedCudaScope(0):
-            hardhat_cls_boxes, _, _ = infer_engine.im_detect_all(hardhat_model, im, None)
+            hardhat_cls_boxes, _, _ = infer_engine.im_detect_all(
+                hardhat_model, im, None)
 
         cls_boxes[hardhat_class_index] = hardhat_cls_boxes[hardhat_class_index]
 
@@ -243,7 +248,7 @@ def main(args):
 
 if __name__ == '__main__':
     workspace.GlobalInit(['caffe2', '--caffe2_log_level=0'])
-    utils.logging.setup_logging(__name__)
+    setup_logging(__name__)
     args = parse_args()
     print(args)
     main(args)
