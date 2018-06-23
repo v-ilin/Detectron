@@ -1,7 +1,11 @@
 #!/usr/bin/env python2
 
 """
-Hardhat, Gloves, Goggles, Belt
+It detects violations which are related with:
+    1. Hardhat
+    2. Gloves
+    3. Goggles
+    4. Belt
 
 Perform inference on a single image or all images with a certain extension
 (e.g., .jpg) in a folder.
@@ -50,13 +54,13 @@ def parse_args():
         '--cfg',
         dest='cfg',
         help='cfg model file (/path/to/model_config.yaml)',
-        default=None,
+        required=True,
         type=str)
     parser.add_argument(
         '--wts',
         dest='weights',
         help='weights model file (/path/to/model_weights.pkl)',
-        default=None,
+        required=True,
         type=str)
     parser.add_argument(
         '--output-video',
@@ -67,8 +71,9 @@ def parse_args():
     parser.add_argument(
         '--video-res',
         dest='video_res',
-        help='video resolution (high or low)',
-        default='high',
+        help='one of video resolutions: high (1600x1200) or low (1280x960)',
+        choices=['high', 'low'],
+        required=True,
         type=str)
     parser.add_argument(
         '--image-ext',
@@ -83,7 +88,9 @@ def parse_args():
         default='/tmp/data.csv',
         type=str)
     parser.add_argument(
-        'im_or_folder', help='image or folder of images', default=None)
+        'im_or_folder',
+        help='image or folder of images',
+        default=None)
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
@@ -109,7 +116,7 @@ keypoints_config_file_path = '/home/user/vilin/detectron-input/pretrained_models
 left_ankle_class_index = 15
 right_ankle_class_index = 16
 
-# x1, y1, x2, y2
+# x_min, y_min, x_max, y_max
 danger_zone_1600_1200 = [136, 453, 587, 894]
 danger_zone_1280_960 = [78, 388, 377, 748]
 
@@ -138,9 +145,9 @@ class person_hardhat_status(IntEnum):
 
 
 class person:
-    def __init__(self, bbox, status, gloves_on, goggles_on, in_danger_zone, belt_on):
+    def __init__(self, bbox, hardhat_status, gloves_on, goggles_on, in_danger_zone, belt_on):
         self.bbox = bbox
-        self.status = status
+        self.hardhat_status = hardhat_status
         self.gloves_on = gloves_on
         self.goggles_on = goggles_on
         self.in_danger_zone = in_danger_zone
@@ -223,44 +230,46 @@ def get_polygon_index_with_max_precision(bboxes):
 def convert_to_person(cls_boxes, is_in_danger_zone):
     current_person = person(None, None, None, None, is_in_danger_zone, None)
 
+    # process a status of a hardhat
     hardhats_polygons = []
 
-    if len(cls_boxes[int(person_class_index.in_hardhat)]) > 0:
+    if len(cls_boxes[person_class_index.in_hardhat]) > 0:
         hardhats_polygons.append(hardhat_polygon(
-            cls_boxes[int(person_class_index.in_hardhat)][0], person_hardhat_status.In_Hardhat))
+            cls_boxes[person_class_index.in_hardhat][0], person_hardhat_status.In_Hardhat))
 
-    if len(cls_boxes[int(person_class_index.without_hardhat)]) > 0:
+    if len(cls_boxes[person_class_index.without_hardhat]) > 0:
         hardhats_polygons.append(hardhat_polygon(
-            cls_boxes[int(person_class_index.without_hardhat)][0], person_hardhat_status.Without_Hardhat))
+            cls_boxes[person_class_index.without_hardhat][0], person_hardhat_status.Without_Hardhat))
 
-    if len(cls_boxes[int(person_class_index.in_hood)]) > 0:
+    if len(cls_boxes[person_class_index.in_hood]) > 0:
         hardhats_polygons.append(hardhat_polygon(
-            cls_boxes[int(person_class_index.in_hood)][0], person_hardhat_status.In_Hood))
+            cls_boxes[person_class_index.in_hood][0], person_hardhat_status.In_Hood))
 
     polygons_count = len(hardhats_polygons)
 
     if polygons_count == 0:
         current_person.bbox = None
-        current_person.status = None
+        current_person.hardhat_status = None
     elif polygons_count == 1:
         current_person.bbox = hardhats_polygons[0].bbox
-        current_person.status = hardhats_polygons[0].status
+        current_person.hardhat_status = hardhats_polygons[0].status
     else:
         max_precition_index = get_polygon_index_with_max_precision(
             hardhats_polygons)
 
         current_person.bbox = hardhats_polygons[max_precition_index].bbox
-        current_person.status = hardhats_polygons[max_precition_index].status
+        current_person.hardhat_status = hardhats_polygons[max_precition_index].status
 
+    # process a status of a gloves
     gloves_polygons = []
 
-    if len(cls_boxes[int(person_class_index.in_gloves)]) > 0:
+    if len(cls_boxes[person_class_index.in_gloves]) > 0:
         gloves_polygons.append(gloves_goggles_polygon(
-            cls_boxes[int(person_class_index.in_gloves)][0], True))
+            cls_boxes[person_class_index.in_gloves][0], True))
 
-    if len(cls_boxes[int(person_class_index.without_gloves)]) > 0:
+    if len(cls_boxes[person_class_index.without_gloves]) > 0:
         gloves_polygons.append(gloves_goggles_polygon(
-            cls_boxes[int(person_class_index.without_gloves)][0], False))
+            cls_boxes[person_class_index.without_gloves][0], False))
 
     gloves_polygons_count = len(gloves_polygons)
 
@@ -273,15 +282,16 @@ def convert_to_person(cls_boxes, is_in_danger_zone):
             gloves_polygons)
         current_person.gloves_on = gloves_polygons[max_precition_index].status
 
+    # process a status of a goggles
     goggles_polygons = []
 
-    if len(cls_boxes[int(person_class_index.in_goggles)]) > 0:
+    if len(cls_boxes[person_class_index.in_goggles]) > 0:
         goggles_polygons.append(gloves_goggles_polygon(
-            cls_boxes[int(person_class_index.in_goggles)][0], True))
+            cls_boxes[person_class_index.in_goggles][0], True))
 
-    if len(cls_boxes[int(person_class_index.without_goggles)]) > 0:
+    if len(cls_boxes[person_class_index.without_goggles]) > 0:
         goggles_polygons.append(gloves_goggles_polygon(
-            cls_boxes[int(person_class_index.without_goggles)][0], False))
+            cls_boxes[person_class_index.without_goggles][0], False))
 
     goggles_polygons_count = len(goggles_polygons)
 
@@ -294,26 +304,29 @@ def convert_to_person(cls_boxes, is_in_danger_zone):
             goggles_polygons)
         current_person.goggles_on = goggles_polygons[max_precition_index].status
 
-    belt_polygons = []
+    # process a status of a belt
+    if len(cls_boxes) > person_class_index.without_belt:
 
-    if len(cls_boxes[int(person_class_index.in_belt)]) > 0:
-        belt_polygons.append(gloves_goggles_polygon(
-            cls_boxes[int(person_class_index.in_belt)][0], True))
+        belt_polygons = []
 
-    if len(cls_boxes[int(person_class_index.without_belt)]) > 0:
-        belt_polygons.append(gloves_goggles_polygon(
-            cls_boxes[int(person_class_index.without_belt)][0], False))
+        if len(cls_boxes[person_class_index.in_belt]) > 0:
+            belt_polygons.append(gloves_goggles_polygon(
+                cls_boxes[person_class_index.in_belt][0], True))
 
-    belt_polygons_count = len(belt_polygons)
+        if len(cls_boxes[person_class_index.without_belt]) > 0:
+            belt_polygons.append(gloves_goggles_polygon(
+                cls_boxes[person_class_index.without_belt][0], False))
 
-    if belt_polygons_count == 0:
-        current_person.belt_on = None
-    elif belt_polygons_count == 1:
-        current_person.belt_on = belt_polygons[0].status
-    else:
-        max_precition_index = get_polygon_index_with_max_precision(
-            belt_polygons)
-        current_person.belt_on = belt_polygons[max_precition_index].status
+        belt_polygons_count = len(belt_polygons)
+
+        if belt_polygons_count == 0:
+            current_person.belt_on = None
+        elif belt_polygons_count == 1:
+            current_person.belt_on = belt_polygons[0].status
+        else:
+            max_precition_index = get_polygon_index_with_max_precision(
+                belt_polygons)
+            current_person.belt_on = belt_polygons[max_precition_index].status
 
     return current_person
 
@@ -397,7 +410,7 @@ def detect_violations(current_person):
             else:
                 break
 
-    if current_person.status == person_hardhat_status.Without_Hardhat:
+    if current_person.hardhat_status == person_hardhat_status.Without_Hardhat:
         if len(person_history) == 0:
             violations.append(without_hardhat_message)
 
@@ -405,37 +418,37 @@ def detect_violations(current_person):
 
         for i, person in enumerate(reversed_person_history):
 
-            if person.status == person_hardhat_status.Undefined:
+            if person.hardhat_status == person_hardhat_status.Undefined:
                 if i == 0:
                     violations.append(without_hardhat_message)
                     break
                 continue
 
-            if person.status == person_hardhat_status.In_Hardhat:
+            if person.hardhat_status == person_hardhat_status.In_Hardhat:
                 violations.append(without_hardhat_message)
                 break
-            if person.status == person_hardhat_status.In_Hood:
+            if person.hardhat_status == person_hardhat_status.In_Hood:
                 for j in reversed(range(0, i - 1)):
 
-                    if reversed_person_history[j].status is person_hardhat_status.Undefined:
+                    if reversed_person_history[j].hardhat_status is person_hardhat_status.Undefined:
                         if j == 0:
                             violations.append(without_hardhat_message)
                             break
                         continue
 
-                    if reversed_person_history[j].status is person_hardhat_status.In_Hood:
+                    if reversed_person_history[j].hardhat_status is person_hardhat_status.In_Hood:
                         if j == 0:
                             violations.append(without_hardhat_message)
                             break
                         continue
 
-                    if reversed_person_history[j].status is person_hardhat_status.In_Hardhat:
+                    if reversed_person_history[j].hardhat_status is person_hardhat_status.In_Hardhat:
                         violations.append(without_hardhat_message)
                         break
 
-                    if reversed_person_history[j].status is person_hardhat_status.Without_Hardhat:
+                    if reversed_person_history[j].hardhat_status is person_hardhat_status.Without_Hardhat:
                         break
-            if person.status == person_hardhat_status.Without_Hardhat:
+            if person.hardhat_status == person_hardhat_status.Without_Hardhat:
                 break
 
     if current_person.in_danger_zone:
@@ -459,6 +472,18 @@ def main(args):
 
     danger_zone = danger_zone_1600_1200 if args.video_res == 'high' else danger_zone_1280_960
 
+    if args.video_res == 'high':
+        danger_zone = danger_zone_1600_1200
+        video_frame_width = 1600
+        video_frame_height = 1200
+    elif args.video_res == 'low':
+        danger_zone = danger_zone_1280_960
+        video_frame_width = 1280
+        video_frame_height = 960
+    else:
+        raise ValueError(
+            'The value of parameter video_res = "{}" is invalid.'.format(args.video_res))
+
     merge_cfg_from_file(args.cfg)
     cfg.NUM_GPUS = 1
     args.weights = cache_url(args.weights, cfg.DOWNLOAD_CACHE)
@@ -475,10 +500,8 @@ def main(args):
 
     # Define the codec and create VideoWriter object
     xvid_codec = 1145656920
-    frame_width = 1600
-    frame_heigth = 1200
     video = cv2.VideoWriter(args.output_video, xvid_codec,
-                            1.0, (frame_width, frame_heigth))
+                            1.0, (video_frame_width, video_frame_height))
 
     csv = open(args.csv_path, 'w+')
 
@@ -513,25 +536,24 @@ def main(args):
         persons = []
         person_kps = []
 
-        for p in range(len(cls_boxes[int(person_class_index.in_hardhat)])):
-            person = cls_boxes[int(person_class_index.in_hardhat)][p]
-            person_key = cls_keyps[int(person_class_index.in_hardhat)][p]
+        for p in range(len(cls_boxes[person_class_index.in_hardhat])):
+            person = cls_boxes[person_class_index.in_hardhat][p]
+            person_key = cls_keyps[person_class_index.in_hardhat][p]
 
             if person[4] > Treshold:
                 persons.append(person)
 
                 if cls_keyps is not None:
-                    for k in range(len(cls_keyps[int(person_class_index.in_hardhat)])):
-                        person_key = cls_keyps[int(
-                            person_class_index.in_hardhat)][k]
+                    for k in range(len(cls_keyps[person_class_index.in_hardhat])):
+                        person_key = cls_keyps[person_class_index.in_hardhat][k]
                         person_kps.append(person_key)
 
         if cls_keyps is not None:
-            cls_keyps[int(person_class_index.in_hardhat)] = person_kps
+            cls_keyps[person_class_index.in_hardhat] = person_kps
 
         if cls_keyps is not None:
             ankles = collect_ankles(
-                cls_keyps[int(person_class_index.in_hardhat)])
+                cls_keyps[person_class_index.in_hardhat])
             is_in_danger_zone = check_ankles_in_danger_zone(
                 ankles, danger_zone)
         else:
@@ -545,9 +567,6 @@ def main(args):
         # print(color.BLUE + color.BOLD + "current_person.status = " +
         #       str(current_person.status) + color.END + color.END)
 
-        # print(color.BLUE + color.BOLD +
-        #       str(len(cls_keyps)) + color.END + color.END)
-
         img_bbox = vis_utils.vis_one_image_opencv(
             im,
             cls_boxes,
@@ -558,7 +577,7 @@ def main(args):
             dataset=dummy_coco_dataset,
             show_class=True)
 
-        frame = cv2.resize(img_bbox, (frame_width, frame_heigth),
+        frame = cv2.resize(img_bbox, (video_frame_width, video_frame_height),
                            interpolation=cv2.INTER_CUBIC)
         video.write(frame)
 
