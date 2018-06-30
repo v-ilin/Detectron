@@ -175,16 +175,17 @@ def create_polygon(cords):
     left_bottom = (cords[0], cords[3])
     right_top = (cords[2], cords[1])
     right_bottom = (cords[2], cords[3])
+
     return Polygon(left_bottom, left_top, right_top, right_bottom)
 
 
-def is_ankle_in_danger_zone(ankle, zone):
-    return zone.encloses_point(ankle)
+def is_ankle_in_danger_zone(ankle, danger_zone):
+    return danger_zone.encloses_point(ankle)
 
 
-def check_ankles_in_danger_zone(ankles, zone):
+def check_ankles_in_danger_zone(ankles, danger_zone):
     ankles_p = [Point2D(a[0], a[1]) for a in ankles]
-    danger_zone_p = create_polygon(zone)
+    danger_zone_p = create_polygon(danger_zone)
     for a in ankles_p:
         if is_ankle_in_danger_zone(a, danger_zone_p):
             return True
@@ -192,21 +193,56 @@ def check_ankles_in_danger_zone(ankles, zone):
 
 
 def collect_ankles(cls_keyps):
-    ankles = []
+    left_ankles = []
+    right_ankles = []
 
-    for person in cls_keyps:
-        x_keyps = person[0]
-        y_keyps = person[1]
+    for roi in cls_keyps:
+        # shape of roi - (x, y, logit, prob)
+        x_keyps = roi[0]
+        y_keyps = roi[1]
+
+        left_ankle_prob = (roi[2][left_ankle_class_index] +
+                           roi[3][left_ankle_class_index]) / 2
+
+        right_ankle_prob = (roi[2][right_ankle_class_index] +
+                            roi[3][right_ankle_class_index]) / 2
 
         left_ankle = [x_keyps[left_ankle_class_index],
-                      y_keyps[left_ankle_class_index]]
+                      y_keyps[left_ankle_class_index],
+                      left_ankle_prob]
         right_ankle = [x_keyps[right_ankle_class_index],
-                       y_keyps[right_ankle_class_index]]
+                       y_keyps[right_ankle_class_index],
+                       right_ankle_prob]
 
-        ankles.append(left_ankle)
-        ankles.append(right_ankle)
+        left_ankles.append(left_ankle)
+        right_ankles.append(right_ankle)
 
-    return ankles
+    if len(left_ankles) == 0 and len(right_ankles) == 0:
+        return []
+    elif len(left_ankles) == 0:
+        right_ankle_index_with_max_probability = right_ankles.index(
+            max(right_ankles, key=lambda x: x[2]))
+
+        return [right_ankles[right_ankle_index_with_max_probability]]
+    elif len(right_ankles) == 0:
+        left_ankle_index_with_max_probability = left_ankles.index(
+            max(left_ankles, key=lambda x: x[2]))
+
+        return [left_ankles[right_ankle_index_with_max_probability]]
+
+    # here we handle a case with only one person in a frame, so it should be adapted to handle any number of persons
+    left_ankle_index_with_max_probability = left_ankles.index(
+        max(left_ankles, key=lambda x: x[2]))
+
+    right_ankle_index_with_max_probability = right_ankles.index(
+        max(right_ankles, key=lambda x: x[2]))
+
+    if left_ankle_index_with_max_probability == right_ankle_index_with_max_probability:
+        return [left_ankles[left_ankle_index_with_max_probability], right_ankles[right_ankle_index_with_max_probability]]
+    elif left_ankle_index_with_max_probability > right_ankle_index_with_max_probability:
+        return [left_ankles[left_ankle_index_with_max_probability], right_ankles[left_ankle_index_with_max_probability]]
+    else:
+        return [left_ankles[right_ankle_index_with_max_probability], right_ankles[right_ankle_index_with_max_probability]]
 
 
 def draw_danger_zone(frame, danger_zone):
@@ -215,7 +251,7 @@ def draw_danger_zone(frame, danger_zone):
     x2 = danger_zone[2]
     y2 = danger_zone[3]
 
-    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 4)
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
 
 
 def get_polygon_index_with_max_precision(bboxes):
@@ -331,7 +367,7 @@ def convert_to_person(cls_boxes, is_in_danger_zone):
     return current_person
 
 
-def filter_cls_boxes(cls_boxes):
+def filter_cls_boxes_by_treshold(cls_boxes):
     for i, boxes in enumerate(cls_boxes):
         boxes_new = []
 
@@ -530,7 +566,7 @@ def main(args):
         assert_and_infer_cfg(cache_urls=False, make_immutable=False)
 
         with c2_utils.NamedCudaScope(0):
-            _, _, cls_keyps = infer_engine.im_detect_all(
+            test, _, cls_keyps = infer_engine.im_detect_all(
                 keypoints_model, im, None)
 
         persons = []
@@ -552,15 +588,15 @@ def main(args):
             cls_keyps[person_class_index.in_hardhat] = person_kps
 
         if cls_keyps is not None:
-            ankles = collect_ankles(
-                cls_keyps[person_class_index.in_hardhat])
+            ankles = collect_ankles(cls_keyps[person_class_index.in_hardhat])
+
             is_in_danger_zone = check_ankles_in_danger_zone(
                 ankles, danger_zone)
         else:
             is_in_danger_zone = False
 
         current_person = convert_to_person(
-            filter_cls_boxes(cls_boxes), is_in_danger_zone)
+            filter_cls_boxes_by_treshold(cls_boxes), is_in_danger_zone)
         violations = detect_violations(current_person)
         person_history.append(current_person)
 
@@ -577,6 +613,8 @@ def main(args):
             dataset=dummy_coco_dataset,
             show_class=True)
 
+        draw_danger_zone(img_bbox, danger_zone)
+
         frame = cv2.resize(img_bbox, (video_frame_width, video_frame_height),
                            interpolation=cv2.INTER_CUBIC)
         video.write(frame)
@@ -587,8 +625,6 @@ def main(args):
 
             for _, text in enumerate(violations):
                 csv.write(text + "," + str(file_without_ext) + '\n')
-
-    video.release()
 
 
 if __name__ == '__main__':
