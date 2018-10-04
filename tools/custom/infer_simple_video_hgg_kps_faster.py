@@ -37,6 +37,10 @@ from sympy import *
 from detectron.core.test import im_detect_keypoints, keypoint_results
 import numpy as np
 
+from detectron.custom.color import color
+from detectron.custom.person import person, person_class_index, person_hardhat_status, hardhat_polygon, gloves_goggles_polygon
+
+
 c2_utils.import_detectron_ops()
 # OpenCL may be enabled by default in OpenCV3; disable it because it's not
 # thread safe and causes unwanted GPU memory allocations.
@@ -83,19 +87,6 @@ def parse_args():
     return parser.parse_args()
 
 
-class color:
-    PURPLE = '\033[95m'
-    CYAN = '\033[96m'
-    DARKCYAN = '\033[36m'
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-    END = '\033[0m'
-
-
 CHANCE_THRESHOLD = 0.7
 left_ankle_class_index = 15
 right_ankle_class_index = 16
@@ -108,48 +99,6 @@ danger_zone = danger_zone_1280_960
 Treshold = 0.6
 
 person_history = []
-
-
-class person_class_index(IntEnum):
-    in_hardhat = 1
-    without_hardhat = 4
-    in_gloves = 3
-    without_gloves = 7
-    in_goggles = 5
-    without_goggles = 6
-    in_hood = 2
-
-
-class person_hardhat_status(IntEnum):
-    Undefined = 0
-    In_Hardhat = 1
-    Without_Hardhat = 2
-    In_Hood = 3
-
-
-class person:
-    def __init__(self, bbox, status, gloves_on, goggles_on, in_danger_zone):
-        self.bbox = bbox
-        self.status = status
-        self.gloves_on = gloves_on
-        self.goggles_on = goggles_on
-        self.in_danger_zone = in_danger_zone
-
-
-class hardhat_polygon:
-    status = person_hardhat_status.Undefined
-
-    def __init__(self, bbox, status):
-        self.bbox = bbox
-        self.status = status
-
-
-class gloves_goggles_polygon:
-    status = None
-
-    def __init__(self, bbox, status):
-        self.bbox = bbox
-        self.status = status
 
 
 def create_polygon(cords):

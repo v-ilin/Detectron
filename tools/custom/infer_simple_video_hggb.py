@@ -39,8 +39,10 @@ import detectron.utils.c2 as c2_utils
 import detectron.utils.vis as vis_utils
 
 from pprint import pprint
-from enum import IntEnum
 from sympy import *
+
+from detectron.custom.color import color
+from detectron.custom.person import person, person_class_index, person_hardhat_status, hardhat_polygon, gloves_goggles_polygon
 
 c2_utils.import_detectron_ops()
 # OpenCL may be enabled by default in OpenCV3; disable it because it's not
@@ -97,19 +99,6 @@ def parse_args():
     return parser.parse_args()
 
 
-class color:
-    PURPLE = '\033[95m'
-    CYAN = '\033[96m'
-    DARKCYAN = '\033[36m'
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-    END = '\033[0m'
-
-
 keypoints_model_path = '/home/user/vilin/detectron-input/pretrained_models/model_final.pkl'
 keypoints_config_file_path = '/home/user/vilin/detectron-input/pretrained_models/e2e_mask_rcnn_R-50-FPN_1x.yaml'
 
@@ -123,51 +112,6 @@ danger_zone_1280_960 = [78, 388, 377, 748]
 Treshold = 0.6
 
 person_history = []
-
-
-class person_class_index(IntEnum):
-    in_hardhat = 1
-    without_hardhat = 4
-    in_gloves = 3
-    without_gloves = 7
-    in_goggles = 5
-    without_goggles = 6
-    in_hood = 2
-    in_belt = 9,
-    without_belt = 8
-
-
-class person_hardhat_status(IntEnum):
-    Undefined = 0
-    In_Hardhat = 1
-    Without_Hardhat = 2
-    In_Hood = 3
-
-
-class person:
-    def __init__(self, bbox, hardhat_status, gloves_on, goggles_on, in_danger_zone, belt_on):
-        self.bbox = bbox
-        self.hardhat_status = hardhat_status
-        self.gloves_on = gloves_on
-        self.goggles_on = goggles_on
-        self.in_danger_zone = in_danger_zone
-        self.belt_on = belt_on
-
-
-class hardhat_polygon:
-    status = person_hardhat_status.Undefined
-
-    def __init__(self, bbox, status):
-        self.bbox = bbox
-        self.status = status
-
-
-class gloves_goggles_polygon:
-    status = None
-
-    def __init__(self, bbox, status):
-        self.bbox = bbox
-        self.status = status
 
 
 def create_polygon(cords):
@@ -251,6 +195,7 @@ def draw_danger_zone(frame, danger_zone):
     x2 = danger_zone[2]
     y2 = danger_zone[3]
 
+    #color in BGR
     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
 
 

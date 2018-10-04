@@ -252,6 +252,14 @@ class DetectionModelHelper(cnn.CNNModelHelper):
           - Use of FPN or not
           - Specifics of the transform method
         """
+        print('spatial_scale = ' + str(spatial_scale))
+        print('sampling_ratio = ' + str(sampling_ratio))
+        print('resolution = ' + str(resolution))
+
+        for blob in blobs_in:
+            print('RoIFeatureTransform: blobs_in = {}, blob_out = {}'.format(
+                blob.__repr__(), blob_out))
+
         assert method in {'RoIPoolF', 'RoIAlign'}, \
             'Unknown pooling method: {}'.format(method)
         has_argmax = (method == 'RoIPoolF')
@@ -275,12 +283,14 @@ class DetectionModelHelper(cnn.CNNModelHelper):
                     spatial_scale=sc,
                     sampling_ratio=sampling_ratio
                 )
+
             # The pooled features from all levels are concatenated along the
             # batch dimension into a single 4D tensor.
             xform_shuffled, _ = self.net.Concat(
                 bl_out_list, [blob_out + '_shuffled', '_concat_' + blob_out],
                 axis=0
             )
+
             # Unshuffle to match rois from dataloader
             restore_bl = blob_rois + '_idx_restore_int32'
             xform_out = self.net.BatchPermutation(

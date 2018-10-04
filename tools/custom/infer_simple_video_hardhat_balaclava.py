@@ -48,6 +48,7 @@ import utils.vis as vis_utils
 import numpy as np
 from sympy import *
 from pprint import pprint
+from detectron.custom.color import color
 
 c2_utils.import_detectron_ops()
 # OpenCL may be enabled by default in OpenCV3; disable it because it's not
@@ -98,19 +99,6 @@ BALACLAVA_THRESHOLD = 50
 
 hardhat_model_path = "/home/user/vilin/detectron-output/hardhats_persons_4/train/hardhats_persons_4_train" \
                      "/generalized_rcnn/model_final.pkl"
-
-
-class color:
-    PURPLE = '\033[95m'
-    CYAN = '\033[96m'
-    DARKCYAN = '\033[36m'
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-    END = '\033[0m'
 
 
 def create_polygon(cords):
